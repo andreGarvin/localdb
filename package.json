@@ -1,0 +1,23 @@
+{
+  "name": "localdb",
+  "version": "0.0.0",
+  "description": "small, simple, and light weight file database software",
+  "main": "index.js",
+  "scripts": {
+    "test": "ava",
+    "test:watch": "ava -w"
+  },
+  "keywords": [
+    "local",
+    "database",
+    "filesystem"
+  ],
+  "author": "Andre Garvin",
+  "license": "MIT",
+  "dependencies": {
+    "rimraf": "^2.6.2"
+  },
+  "devDependencies": {
+    "ava": "^0.24.0"
+  }
+}
