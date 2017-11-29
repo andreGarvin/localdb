@@ -104,7 +104,10 @@ class localdb {
         //     .catch(err => err)
 
         process.on('beforeExit', () => {
-            this.close()
+
+            if (this.compressed_file_path !== 'dropped') {
+                this.close()
+            }
         })
     }
 
@@ -379,6 +382,8 @@ class localdb {
      * @return {void}
      */
     drop() {
+        console.log(`Dropped ${path.basename(this.compressed_file_path).split('.gz').join('')}`)
+        this.compressed_file_path = 'dropped';
         return rimraf.sync(this.db_path)
     }
 }

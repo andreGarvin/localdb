@@ -1,3 +1,5 @@
+const { readdirSync } = require('fs');
+
 const { test } = require('ava')
 const rimraf = require('rimraf')
 
@@ -97,4 +99,9 @@ test('deleteProp()', async t => {
     const collection_prop_value = await db.fetchProp('/new_york/something/else/may')
     const collection_prop_name_array = Object.keys(collection_prop_value)
     return t.truthy(!collection_prop_name_array.includes('not'))
+})
+
+test('drop()', t => {
+    db.drop()
+    return t.falsy(readdirSync('.').includes('test@localdb'))
 })
