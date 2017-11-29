@@ -3,7 +3,7 @@ const { readdirSync } = require('fs');
 const { test } = require('ava')
 const rimraf = require('rimraf')
 
-const localdb = require('../src')
+const localdb = require('../')
 
 const db = new localdb({
     __name__: './test'

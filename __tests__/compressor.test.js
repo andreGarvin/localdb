@@ -4,7 +4,7 @@ const { deepEqual } = require('assert')
 const { test } = require('ava')
 const rimraf = require('rimraf')
 
-const { CompressToGzip, unCompressGzip } = require('../src/lib/compressor')
+const { CompressToGzip, unCompressGzip } = require('../lib/compressor')
 
 test.afterEach(() => {
     rimraf.sync('./hello-world.gz')
