@@ -9,12 +9,6 @@ const db = new localdb({
     __name__: './test'
 })
 
-
-test.after(() => {
-    rimraf.sync('./test@localdb')
-})
-
-
 test('create()', async t => {
     const collection = await db.create({
         __name__: 'new_york',
@@ -23,7 +17,7 @@ test('create()', async t => {
             something: {
                 else: {
                     may: {
-                        not: 'so muhc',
+                        not: 'so much',
                         at_all: 123
                     },
                     be: {
@@ -39,7 +33,7 @@ test('create()', async t => {
         something: {
             else: {
                 may: {
-                    not: 'so muhc',
+                    not: 'so much',
                     at_all: 123
                 },
                 be: {
@@ -65,7 +59,7 @@ test('on()', async t => {
         return t.not(payload, undefined)
     })
 
-    await db.updateProp('/new_york/something/be/new', {
+    await db.updateProp('/new_york/something/else/be/new', {
         payload: true
     })
 })
@@ -101,7 +95,7 @@ test('deleteProp()', async t => {
     return t.truthy(!collection_prop_name_array.includes('not'))
 })
 
-test('drop()', t => {
+test.after('drop()', t => {
     db.drop()
     return t.falsy(readdirSync('.').includes('test@localdb'))
 })
