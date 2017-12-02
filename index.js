@@ -454,10 +454,9 @@ class localdb {
                 return reject( new Error('No paylaod data was given') )
             }
 
-            payload = {
-                ...payload,
+            payload = Object.assign(payload, {
                 type: 'upd'
-            }
+            })
             return updateCollectionPath.call(this, db_path, payload)
                 // return the new updated collection Object
                 .then(collection => resolve(collection))
