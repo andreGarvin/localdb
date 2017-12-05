@@ -111,9 +111,16 @@ class localdb {
 
             if (resp !== undefined) {
                 const { __name__, db_path, data_object } = await resp
-                await this.updateProp(db_path ? db_path : `/${__name__}`, {
-                    payload: data_object
-                }, 'internal')
+                if (db_path !== undefined) {
+                    await this.updateProp(db_path, {
+                        payload: data_object
+                    }, 'internal')
+                } else {
+                    this.db[__name__] = Object.assign(this.db[__name__], {
+                        data: data_object
+                    })
+                }
+                // console.log(this.db[__name__].data)
             }
         }
 
@@ -250,6 +257,7 @@ class localdb {
                     data: data_object
                 }
                 this.db = Object.assign(this.db, collection)
+
                 process.emit('action', 'crt', {
                     __name__,
                     collection: data_object
