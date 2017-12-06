@@ -7,4 +7,6 @@ jobs:
                         - checkout
                         - run:
                                 name: npm install and nom test
-                                command: npm test
+                                command: |
+                                    npm i
+                                    npm test
