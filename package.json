@@ -20,6 +20,7 @@
     "watch-fs": "0.0.7"
   },
   "devDependencies": {
-    "ava": "^0.24.0"
+    "ava": "^0.24.0",
+    "request": "^2.83.0"
   }
 }
