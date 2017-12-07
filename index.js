@@ -257,7 +257,7 @@ class localdb {
                     const collection_frag = inspect(db_path, collection, {
                         type: 'del'
                     })
-
+                    
                     if (collection_frag !== undefined) {
                         return reject(collection_frag.ErrorMessage)
                     }
@@ -265,26 +265,35 @@ class localdb {
                     /**
                      * Temp update-delete script fix
                      */
-                    let new_collection = {}
-                    new_collection[__name__] = { data: collection };
-                    new_collection = Object.assign(this.db[__name__], new_collection)
-                    this.db = Object.assign(this.db, new_collection)
+                    // let new_collection = {}
+                    // setProp(new_collection, __name__, { data: collection })
+                    // new_collection = Object.assign(this.db[__name__], new_collection)
+                    // this.db = Object.assign(this.db, new_collection)
                     
-                    const file_name = readdirSync(this.db_path).filter(i => path.extname(i) === '.gz').join('')
-                    const compressed_file_path = path.resolve(this.db_path, file_name)
-                    return CompressToGzip(compressed_file_path, JSON.stringify(this.db))
-                        .then(() => resolve(undefined))
-                        .catch(err => reject)
-                    // this converts it back to a db_path that was given
-                    // db_path = `/${__name__}${db_path.split('/').slice(0, -1).join('/')}`
-                    // return this.updateProp(db_path, collection, {
-                    //     payload: null
-                    // })
+                    // const file_name = readdirSync(this.db_path).filter(i => path.extname(i) === '.gz').join('')
+                    // const compressed_file_path = path.resolve(this.db_path, file_name)
+                    // return CompressToGzip(compressed_file_path, JSON.stringify(this.db))
                     //     .then(() => resolve(undefined))
-                    //     .catch(err => reject(err))
+                    //     .catch(err => reject)
+                    // this converts it back to a db_path that was given
+                    return this.updateProp(`/${__name__}`, {
+                        payload: collection
+                    })
+                        .then(() => resolve(undefined))
+                        .catch(err => reject(err))
                 })
                 .catch(err => reject(err))
         })
+    }
+
+    /**
+    * This deletes the database folder
+    * @return {void}
+    */
+    drop() {
+        this.compressed_file_path = 'dropped';
+        // console.log(`Dropped ${path.basename(this.compressed_file_path).split('.gz').join('')}`)
+        return rimraf.sync(this.db_path)
     }
 
     /**
@@ -426,7 +435,7 @@ class localdb {
 
             // updates the object
             if (db_path === '/') {
-                collection = Object.assign(collection, action.payload)
+                collection = action.payload
             } else {
                 inspect(db_path, collection, action)
             }
@@ -434,13 +443,12 @@ class localdb {
             if (__name__ === '__state__') {
                 if (notUndefined(this.__state__)) {
                     this.__state__ = Object.assign(this.__state__, collection)
-                } else {
-
                 }
             }
             this.db[__name__] = Object.assign(this.db[__name__], { data: collection })
 
             process.emit(__name__, collection)
+            
             // returns the new object
             return await collection
         }
@@ -462,16 +470,6 @@ class localdb {
                 .then(collection => resolve(collection))
                 .catch(err => reject(err))
         })
-    }
-
-    /**
-     * This deletes the database folder
-     * @return {void}
-     */
-    drop() {
-        this.compressed_file_path = 'dropped';
-        // console.log(`Dropped ${path.basename(this.compressed_file_path).split('.gz').join('')}`)
-        return rimraf.sync(this.db_path)
     }
 }
 
@@ -520,11 +518,21 @@ function inspect(db_path, obj, action) {
 
         // in cases of adding a prop that does not exist on the JSON object
         // this creates object and assigns it to the JSON object and replace exist prop value/s
-        if (action.type === 'upd' && db_path.length === 2 && !Object.keys(obj).includes(db_path[1])) {
-            const new_obj = {}
-            new_obj[db_path[1]] = action.payload
-            obj[db_path[0]] = new_obj
-            return;
+        // in caese of deleting prop but not the parent root
+        if (db_path.length === 2 && !Object.keys(obj).includes(db_path[1])) {
+            if (action.type === 'upd') {
+                const new_obj = {}
+                new_obj[db_path[1]] = action.payload
+                obj[db_path[0]] = new_obj
+                return;
+            } else if (action.type === 'del') {
+                delete obj[db_path[0]][db_path[1]]
+
+                if (Object.keys(obj[db_path[0]]).length === 0) {
+                    delete obj[db_path[0]]
+                }
+                return
+            }
         }
 
         // slices the path to the next path and pass the object being inspected
@@ -542,10 +550,12 @@ function inspect(db_path, obj, action) {
             const { type, payload } = action
             switch (type) {
                 case 'del':
-                    delete obj[db_path[0]]
-                    break;
-                case 'inst':
-                    obj[db_path[0]] = payload[i]
+                    if ( notUndefined(obj[path[0]]) ) {
+                        delete obj[db_path[0]]
+                    } else {
+                        console.log('hello')
+                        delete obj
+                    }
                     break;
                 case 'upd':
                     if ( notUndefined(obj[db_path[0]]) ) {
