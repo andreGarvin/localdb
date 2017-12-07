@@ -518,6 +518,15 @@ function inspect(db_path, obj, action) {
             }
         }
 
+        // in cases of adding a prop that does not exist on the JSON object
+        // this creates object and assigns it to the JSON object and replace exist prop value/s
+        if (action.type === 'upd' && db_path.length === 2 && !Object.keys(obj).includes(db_path[1])) {
+            const new_obj = {}
+            new_obj[db_path[1]] = action.payload
+            obj[db_path[0]] = new_obj
+            return;
+        }
+
         // slices the path to the next path and pass the object being inspected
         return inspect(db_path.slice(1), obj[db_path[0]], action)
     } else {
@@ -539,8 +548,12 @@ function inspect(db_path, obj, action) {
                     obj[db_path[0]] = payload[i]
                     break;
                 case 'upd':
-                    if ( notUndefined(obj) ) {
-                        obj[db_path[0]] = payload
+                    if ( notUndefined(obj[db_path[0]]) ) {
+                        if (typeof obj[db_path[0]] === 'object' && typeof payload === 'object') {
+                            obj[db_path[0]] = Object.assign(obj[db_path[0]], payload)
+                        } else {
+                            obj[db_path[0]] = payload
+                        }
                     }
                     break;
             }
