@@ -3,4 +3,5 @@ __tests__
 .gitignore
 
 test@localdb
-app.js
+
+pg

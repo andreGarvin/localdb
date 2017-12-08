@@ -2,6 +2,7 @@ const {
     readdirSync,
     existsSync,
     mkdirSync,
+    watch,
 } = require('fs')
 const path = require('path')
 
@@ -51,6 +52,7 @@ class localdb {
         this.dbconf = dbconf;
 
         this.db = {};
+        this.extensions = [];
         this.__state__ = {
             dbs: [],
             size: 0,
@@ -71,10 +73,10 @@ class localdb {
         this.db_path = `${path.resolve(this.dbconf.__name__)}@localdb`
         if (!existsSync(this.db_path)) {
             this.db = Object.assign({}, { __state__: this.__state__ })
-
+            
             // creates the folder
             mkdirSync(this.db_path)
-
+            
             // creates the file path to the db file
             const db_file_path = path.resolve(this.db_path, `${Math.random().toString(16).slice(2)}.db`)
             CompressToGzip(db_file_path, this.db)
@@ -82,6 +84,7 @@ class localdb {
                     this.compressed_file_path = gz_path
                 })
                 .catch(err => {
+                    rimraf.sync(this.db_path)
                     throw new Error(err)
                 })
         } else {
@@ -94,15 +97,46 @@ class localdb {
                     this.__state__ = Object.assign(this.__state__, this.db.__state__)
                 })
                 .catch(err => {
+                    rimraf.sync(this.db_path)
                     throw new Error(err)
                 })
         }
 
         process.on('beforeExit', () => {
-
+            
             if (this.compressed_file_path !== 'dropped') {
                 this.close()
             }
+        })
+
+        async function resolvePromise(promiseObj, type, payload) {
+            const resp = await promiseObj
+
+            if (resp !== undefined) {
+                const { __name__, db_path, data_object } = await resp
+                if (db_path !== undefined) {
+                    await this.updateProp(db_path, {
+                        payload: data_object
+                    }, 'internal')
+                } else {
+                    this.db[__name__] = Object.assign(this.db[__name__], {
+                        data: data_object
+                    })
+                }
+                // console.log(this.db[__name__].data)
+            }
+        }
+
+        process.on('action', (type, payload) => {
+
+            this.extensions.forEach(i => {
+                const Func = i.call(this, this, type, payload)
+
+                if (Func instanceof Promise) {
+                    resolvePromise.call(this, Func, type, payload)
+                        .then(() => undefined)
+                }
+            })
         })
     }
 
@@ -149,7 +183,7 @@ class localdb {
                 this.__state__ = Object.assign(this.__state__, _state)
                 // return Que.emit('__state__', state)
             })
-            .catch(err => err)
+            .catch(err => console.log(err))
     }
 
     /**
@@ -195,7 +229,10 @@ class localdb {
         }
 
         return writeTo_db.call(this, this.db)
-            .catch(err => console.log(err))
+            .catch(err => {
+                console.log(err)
+                return process.exit()
+            })
     }
 
     /**
@@ -226,9 +263,36 @@ class localdb {
                     data: data_object
                 }
                 this.db = Object.assign(this.db, collection)
+
+                process.emit('action', 'crt', {
+                    __name__,
+                    collection: data_object
+                })
                 return resolve(data_object)
             }
         })
+    }
+
+    startServer() {
+        if (notUndefined(this.dbconf.SERVER)) {
+            if (notUndefined(this.db) || Object.keys(this.db) !== 0) {
+                return require('./lib/server')(this.dbconf.SERVER, this.db, this.compressed_file_path)
+            }
+            
+            const file_name = readdirSync(this.db_path).filter(i => path.extname(i) === '.gz').join('')
+            const compressed_file_path = path.resolve(this.db_path, file_name)
+            return unCompressGzip(compressed_file_path)
+                .then(db_stream => {
+                    db_stream = JSON.parse(db_stream)
+
+                    this.db = Object.assign(this.db, db_stream)
+                    this.__state__ = Object.assign(this.__state__, db_stream.__state__)
+                    return require('./lib/server')(this.dbconf.SERVER, this.db, compressed_file_path)
+                })
+                .catch(err => Promise.reject(err))
+        } else {
+            return Promise.reject(new Error('SERVER feild was given but is empty.'))    
+        }
     }
 
     /**
@@ -257,34 +321,40 @@ class localdb {
                     const collection_frag = inspect(db_path, collection, {
                         type: 'del'
                     })
-
+                    
                     if (collection_frag !== undefined) {
                         return reject(collection_frag.ErrorMessage)
                     }
-
-                    /**
-                     * Temp update-delete script fix
-                     */
-                    let new_collection = {}
-                    new_collection[__name__] = { data: collection };
-                    new_collection = Object.assign(this.db[__name__], new_collection)
-                    this.db = Object.assign(this.db, new_collection)
                     
-                    const file_name = readdirSync(this.db_path).filter(i => path.extname(i) === '.gz').join('')
-                    const compressed_file_path = path.resolve(this.db_path, file_name)
-                    return CompressToGzip(compressed_file_path, JSON.stringify(this.db))
-                        .then(() => resolve(undefined))
-                        .catch(err => reject)
                     // this converts it back to a db_path that was given
-                    // db_path = `/${__name__}${db_path.split('/').slice(0, -1).join('/')}`
-                    // return this.updateProp(db_path, collection, {
-                    //     payload: null
-                    // })
-                    //     .then(() => resolve(undefined))
-                    //     .catch(err => reject(err))
+                    return this.updateProp(`/${__name__}`, {
+                        payload: collection
+                    })
+                        .then(() => resolve(undefined))
+                        .catch(err => reject(err))
                 })
                 .catch(err => reject(err))
         })
+    }
+
+    /**
+    * This deletes the database folder
+    * @return {void}
+    */
+    drop() {
+        this.compressed_file_path = 'dropped';
+        // console.log(`Dropped ${path.basename(this.compressed_file_path).split('.gz').join('')}`)
+        return rimraf.sync(this.db_path)
+    }
+
+    /* This is a method that that always to inject middleware of code that runs
+     * on actions beng made on locladb
+     * The actions such as create, delete, insert/update will call the excutebale code
+     * @param {(Promise|function)} func this is a the executable function
+     * @return {void}
+     */
+    extends(func) {
+        this.extensions.push(func)
     }
 
     /**
@@ -377,6 +447,7 @@ class localdb {
                     }
                     return reject( new Error(`localdb could not find collection name ['${__name__}'].`) )
                 })
+                .catch(err => reject(err))
         })
     }
 
@@ -415,6 +486,7 @@ class localdb {
     }
 
     updateProp(db_path, payload) {
+        const internal = Array.from(arguments).slice(-1)[0] === 'internal'
 
         async function updateCollectionPath(db_path, action) {
             // extracts the name from the db_path
@@ -422,11 +494,11 @@ class localdb {
 
             // cleans the db the data again
             db_path = `/${db_path.split('/').slice(2).join('/')}`
-            let collection = __name__ === '__state__' ? await fetchState() : await this.getCollection(__name__)
+            let collection = __name__ === '__state__' ? await this.fetchState() : await this.getCollection(__name__)
 
             // updates the object
             if (db_path === '/') {
-                collection = Object.assign(collection, action.payload)
+                collection = action.payload
             } else {
                 inspect(db_path, collection, action)
             }
@@ -434,13 +506,17 @@ class localdb {
             if (__name__ === '__state__') {
                 if (notUndefined(this.__state__)) {
                     this.__state__ = Object.assign(this.__state__, collection)
-                } else {
-
                 }
             }
             this.db[__name__] = Object.assign(this.db[__name__], { data: collection })
-
-            process.emit(__name__, collection)
+            
+            if (!internal) {
+                process.emit(__name__, collection)
+                process.emit('action', 'upd', {
+                    __name__,
+                    collection,
+                })
+            }
             // returns the new object
             return await collection
         }
@@ -462,16 +538,6 @@ class localdb {
                 .then(collection => resolve(collection))
                 .catch(err => reject(err))
         })
-    }
-
-    /**
-     * This deletes the database folder
-     * @return {void}
-     */
-    drop() {
-        this.compressed_file_path = 'dropped';
-        // console.log(`Dropped ${path.basename(this.compressed_file_path).split('.gz').join('')}`)
-        return rimraf.sync(this.db_path)
     }
 }
 
@@ -518,6 +584,25 @@ function inspect(db_path, obj, action) {
             }
         }
 
+        // in cases of adding a prop that does not exist on the JSON object
+        // this creates object and assigns it to the JSON object and replace exist prop value/s
+        // in caese of deleting prop but not the parent root
+        if (db_path.length === 2 && !Object.keys(obj).includes(db_path[1])) {
+            if (action.type === 'upd') {
+                const new_obj = {}
+                new_obj[db_path[1]] = action.payload
+                obj[db_path[0]] = new_obj
+                return;
+            } else if (action.type === 'del') {
+                delete obj[db_path[0]][db_path[1]]
+
+                if (Object.keys(obj[db_path[0]]).length === 0) {
+                    delete obj[db_path[0]]
+                }
+                return
+            }
+        }
+
         // slices the path to the next path and pass the object being inspected
         return inspect(db_path.slice(1), obj[db_path[0]], action)
     } else {
@@ -533,14 +618,20 @@ function inspect(db_path, obj, action) {
             const { type, payload } = action
             switch (type) {
                 case 'del':
-                    delete obj[db_path[0]]
-                    break;
-                case 'inst':
-                    obj[db_path[0]] = payload[i]
+                    if ( notUndefined(obj[path[0]]) ) {
+                        delete obj[db_path[0]]
+                    } else {
+                        console.log('hello')
+                        delete obj
+                    }
                     break;
                 case 'upd':
-                    if ( notUndefined(obj) ) {
-                        obj[db_path[0]] = payload
+                    if ( notUndefined(obj[db_path[0]]) ) {
+                        if (typeof obj[db_path[0]] === 'object' && typeof payload === 'object') {
+                            obj[db_path[0]] = Object.assign(obj[db_path[0]], payload)
+                        } else {
+                            obj[db_path[0]] = payload
+                        }
                     }
                     break;
             }
