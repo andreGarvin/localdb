@@ -99,11 +99,6 @@ test('deleteProp()', async t => {
     return t.truthy(!collection_prop_name_array.includes('not'))
 })
 
-test.after('drop()', t => {
-    db.drop()
-    return t.falsy(readdirSync('.').includes('test@localdb'))
-})
-
 test('extends()', t => {
     
     function changeDataPromise(db, type, payload) {
