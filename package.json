@@ -15,7 +15,6 @@
   "author": "Andre Garvin",
   "license": "MIT",
   "dependencies": {
-    "@andre_garvin/localdb": "./",
     "rimraf": "^2.6.2",
     "uuid": "^3.1.0"
   },

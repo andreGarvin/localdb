@@ -99,3 +99,40 @@ test.after('drop()', t => {
     db.drop()
     return t.falsy(readdirSync('.').includes('test@localdb'))
 })
+
+test('extends()', t => {
+    
+    function changeDataPromise(db, type, payload) {
+        let { __name__, collection } = payload
+
+        return new Promise(resolve => {
+            if (__name__ === 'new-collection') {
+                
+                t.deepEqual({
+                    db: typeof db !== undefined,
+                    type,
+                    collection,
+                }, {
+                    db: true,
+                    type: 'crt',
+                    collection: ['person', 'cat', 'rock'].map((item, id) => Object.assign({}, { id, item }))
+                })
+                collection = collection.map(i => i.item)
+                
+                return resolve({
+                    __name__,
+                    data_object: collection,
+                })
+            } else {
+                return resolve(undefined)
+            }
+        })
+    }
+
+    db.extends(changeDataPromise)
+    
+    db.create({
+        __name__: 'new-collection',
+        data_object: ['person', 'cat', 'rock'].map((item, id) => Object.assign({}, { id, item }))
+    }).then(() => undefined)
+})

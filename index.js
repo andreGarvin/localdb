@@ -51,6 +51,7 @@ class localdb {
         this.dbconf = dbconf;
 
         this.db = {};
+        this.extensions = [];
         this.__state__ = {
             dbs: [],
             size: 0,
@@ -99,10 +100,40 @@ class localdb {
         }
 
         process.on('beforeExit', () => {
-
+            
             if (this.compressed_file_path !== 'dropped') {
                 this.close()
             }
+        })
+
+        async function resolvePromise(promiseObj, type, payload) {
+            const resp = await promiseObj
+
+            if (resp !== undefined) {
+                const { __name__, db_path, data_object } = await resp
+                if (db_path !== undefined) {
+                    await this.updateProp(db_path, {
+                        payload: data_object
+                    }, 'internal')
+                } else {
+                    this.db[__name__] = Object.assign(this.db[__name__], {
+                        data: data_object
+                    })
+                }
+                // console.log(this.db[__name__].data)
+            }
+        }
+
+        process.on('action', (type, payload) => {
+
+            this.extensions.forEach(i => {
+                const Func = i.call(this, this, type, payload)
+
+                if (Func instanceof Promise) {
+                    resolvePromise.call(this, Func, type, payload)
+                        .then(() => undefined)
+                }
+            })
         })
     }
 
@@ -226,6 +257,11 @@ class localdb {
                     data: data_object
                 }
                 this.db = Object.assign(this.db, collection)
+
+                process.emit('action', 'crt', {
+                    __name__,
+                    collection: data_object
+                })
                 return resolve(data_object)
             }
         })
@@ -261,20 +297,7 @@ class localdb {
                     if (collection_frag !== undefined) {
                         return reject(collection_frag.ErrorMessage)
                     }
-
-                    /**
-                     * Temp update-delete script fix
-                     */
-                    // let new_collection = {}
-                    // setProp(new_collection, __name__, { data: collection })
-                    // new_collection = Object.assign(this.db[__name__], new_collection)
-                    // this.db = Object.assign(this.db, new_collection)
                     
-                    // const file_name = readdirSync(this.db_path).filter(i => path.extname(i) === '.gz').join('')
-                    // const compressed_file_path = path.resolve(this.db_path, file_name)
-                    // return CompressToGzip(compressed_file_path, JSON.stringify(this.db))
-                    //     .then(() => resolve(undefined))
-                    //     .catch(err => reject)
                     // this converts it back to a db_path that was given
                     return this.updateProp(`/${__name__}`, {
                         payload: collection
@@ -294,6 +317,16 @@ class localdb {
         this.compressed_file_path = 'dropped';
         // console.log(`Dropped ${path.basename(this.compressed_file_path).split('.gz').join('')}`)
         return rimraf.sync(this.db_path)
+    }
+
+    /* This is a method that that always to inject middleware of code that runs
+     * on actions beng made on locladb
+     * The actions such as create, delete, insert/update will call the excutebale code
+     * @param {(Promise|function)} func this is a the executable function
+     * @return {void}
+     */
+    extends(func) {
+        this.extensions.push(func)
     }
 
     /**
@@ -424,6 +457,7 @@ class localdb {
     }
 
     updateProp(db_path, payload) {
+        const internal = Array.from(arguments).slice(-1)[0] === 'internal'
 
         async function updateCollectionPath(db_path, action) {
             // extracts the name from the db_path
@@ -446,9 +480,14 @@ class localdb {
                 }
             }
             this.db[__name__] = Object.assign(this.db[__name__], { data: collection })
-
-            process.emit(__name__, collection)
             
+            if (!internal) {
+                process.emit(__name__, collection)
+                process.emit('action', 'upd', {
+                    __name__,
+                    collection,
+                })
+            }
             // returns the new object
             return await collection
         }
