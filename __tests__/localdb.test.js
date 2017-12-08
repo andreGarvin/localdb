@@ -1,4 +1,5 @@
 const { readdirSync } = require('fs');
+const request = require('request')
 
 const { test } = require('ava')
 const rimraf = require('rimraf')
@@ -6,7 +7,10 @@ const rimraf = require('rimraf')
 const localdb = require('../')
 
 const db = new localdb({
-    __name__: './test'
+    __name__: './test',
+    SERVER: {
+        PORT: 8080
+    }
 })
 
 test('create()', async t => {
@@ -135,4 +139,19 @@ test('extends()', t => {
         __name__: 'new-collection',
         data_object: ['person', 'cat', 'rock'].map((item, id) => Object.assign({}, { id, item }))
     }).then(() => undefined)
+})
+
+test('startServer()', async t => {
+    await db.startServer()
+    const collection = await db.getCollection('new_york')
+
+    function fetchResponse() {
+        return new Promise(resolve => {
+            request('http://localhost:8080/new_york', async (err, data) => {
+                return resolve(data)
+            })
+        })
+    }
+    const resp = await fetchResponse()
+    t.deepEqual(JSON.parse(resp.body), collection)
 })

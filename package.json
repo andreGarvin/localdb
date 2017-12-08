@@ -16,9 +16,11 @@
   "license": "MIT",
   "dependencies": {
     "rimraf": "^2.6.2",
-    "uuid": "^3.1.0"
+    "uuid": "^3.1.0",
+    "watch-fs": "0.0.7"
   },
   "devDependencies": {
-    "ava": "^0.24.0"
+    "ava": "^0.24.0",
+    "request": "^2.83.0"
   }
 }

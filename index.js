@@ -2,6 +2,7 @@ const {
     readdirSync,
     existsSync,
     mkdirSync,
+    watch,
 } = require('fs')
 const path = require('path')
 
@@ -72,10 +73,10 @@ class localdb {
         this.db_path = `${path.resolve(this.dbconf.__name__)}@localdb`
         if (!existsSync(this.db_path)) {
             this.db = Object.assign({}, { __state__: this.__state__ })
-
+            
             // creates the folder
             mkdirSync(this.db_path)
-
+            
             // creates the file path to the db file
             const db_file_path = path.resolve(this.db_path, `${Math.random().toString(16).slice(2)}.db`)
             CompressToGzip(db_file_path, this.db)
@@ -83,6 +84,7 @@ class localdb {
                     this.compressed_file_path = gz_path
                 })
                 .catch(err => {
+                    rimraf.sync(this.db_path)
                     throw new Error(err)
                 })
         } else {
@@ -95,6 +97,7 @@ class localdb {
                     this.__state__ = Object.assign(this.__state__, this.db.__state__)
                 })
                 .catch(err => {
+                    rimraf.sync(this.db_path)
                     throw new Error(err)
                 })
         }
@@ -180,7 +183,7 @@ class localdb {
                 this.__state__ = Object.assign(this.__state__, _state)
                 // return Que.emit('__state__', state)
             })
-            .catch(err => err)
+            .catch(err => console.log(err))
     }
 
     /**
@@ -226,7 +229,10 @@ class localdb {
         }
 
         return writeTo_db.call(this, this.db)
-            .catch(err => console.log(err))
+            .catch(err => {
+                console.log(err)
+                return process.exit()
+            })
     }
 
     /**
@@ -265,6 +271,28 @@ class localdb {
                 return resolve(data_object)
             }
         })
+    }
+
+    startServer() {
+        if (notUndefined(this.dbconf.SERVER)) {
+            if (notUndefined(this.db) || Object.keys(this.db) !== 0) {
+                return require('./lib/server')(this.dbconf.SERVER, this.db, this.compressed_file_path)
+            }
+            
+            const file_name = readdirSync(this.db_path).filter(i => path.extname(i) === '.gz').join('')
+            const compressed_file_path = path.resolve(this.db_path, file_name)
+            return unCompressGzip(compressed_file_path)
+                .then(db_stream => {
+                    db_stream = JSON.parse(db_stream)
+
+                    this.db = Object.assign(this.db, db_stream)
+                    this.__state__ = Object.assign(this.__state__, db_stream.__state__)
+                    return require('./lib/server')(this.dbconf.SERVER, this.db, compressed_file_path)
+                })
+                .catch(err => Promise.reject(err))
+        } else {
+            return Promise.reject(new Error('SERVER feild was given but is empty.'))    
+        }
     }
 
     /**
@@ -419,6 +447,7 @@ class localdb {
                     }
                     return reject( new Error(`localdb could not find collection name ['${__name__}'].`) )
                 })
+                .catch(err => reject(err))
         })
     }
 
@@ -465,7 +494,7 @@ class localdb {
 
             // cleans the db the data again
             db_path = `/${db_path.split('/').slice(2).join('/')}`
-            let collection = __name__ === '__state__' ? await fetchState() : await this.getCollection(__name__)
+            let collection = __name__ === '__state__' ? await this.fetchState() : await this.getCollection(__name__)
 
             // updates the object
             if (db_path === '/') {
