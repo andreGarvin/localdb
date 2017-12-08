@@ -1,6 +1,6 @@
 {
   "name": "@andre_garvin/localdb",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "small, simple, and light weight file database software",
   "main": "index.js",
   "scripts": {
