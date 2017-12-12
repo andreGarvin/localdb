@@ -174,13 +174,12 @@ class localdb {
                 newState.synced = payload
                 break;
         }
-        
+
         return this.updateProp(`/__state__/${prop}`, {
             payload,
         })
             .then(_state => {
                 this.__state__ = Object.assign(this.__state__, _state)
-                // return Que.emit('__state__', state)
             })
             .catch(err => console.log(err))
     }
@@ -517,6 +516,7 @@ class localdb {
                 
                 if (!internal) {
                     process.emit(__name__, collection)
+                    
                     process.emit('action', 'upd', {
                         __name__,
                         collection,

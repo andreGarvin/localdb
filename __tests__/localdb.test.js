@@ -138,15 +138,15 @@ test('extends()', t => {
 
 test('startServer()', async t => {
     await db.startServer()
-    const collection = await db.getCollection('new_york')
+    const collection = await db.getCollection('new-collection')
 
     function fetchResponse() {
         return new Promise(resolve => {
-            request('http://localhost:8080/new_york', async (err, data) => {
+            request('http://localhost:8080/new-collection', async (err, data) => {
                 return resolve(data)
             })
         })
     }
     const resp = await fetchResponse()
-    t.deepEqual(JSON.parse(resp.body), collection)
+    t.deepEqual(JSON.parse(resp.body), collection.map(i => i.item))
 })
