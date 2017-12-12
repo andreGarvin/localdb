@@ -136,13 +136,15 @@ test('extends()', t => {
     }).then(() => undefined)
 })
 
+// broken test
 test('startServer()', async t => {
     await db.startServer()
+
     const collection = await db.getCollection('new-collection')
 
     function fetchResponse() {
         return new Promise(resolve => {
-            request('http://localhost:8080/new-collection', async (err, data) => {
+            request(`http://localhost:8080/new-collection`, async (err, data) => {
                 return resolve(data)
             })
         })
