@@ -123,7 +123,6 @@ class localdb {
                         data: data_object
                     })
                 }
-                // console.log(this.db[__name__].data)
             }
         }
 
@@ -175,7 +174,7 @@ class localdb {
                 newState.synced = payload
                 break;
         }
-
+        
         return this.updateProp(`/__state__/${prop}`, {
             payload,
         })
@@ -217,8 +216,10 @@ class localdb {
 
         async function writeTo_db(db) {
             const saved_db_stream = JSON.parse(await unCompressGzip(this.compressed_file_path))
+            
             this.__state__.dbs = Object.keys(this.db).filter(i => i !== '__state__')
             this.db = Object.assign(this.db, { __state__: this.__state__ })
+            
             const decouple_obj_ref = JSON.parse(JSON.stringify(saved_db_stream))
             const new_db_stream = Object.assign(decouple_obj_ref, this.db)
 
@@ -264,10 +265,13 @@ class localdb {
                 }
                 this.db = Object.assign(this.db, collection)
 
-                process.emit('action', 'crt', {
-                    __name__,
-                    collection: data_object
-                })
+                if ( this.extends.length !== 0) {
+
+                    process.emit('action', 'crt', {
+                        __name__,
+                        collection: data_object
+                    })
+                }
                 return resolve(data_object)
             }
         })
@@ -507,18 +511,20 @@ class localdb {
                 if (notUndefined(this.__state__)) {
                     this.__state__ = Object.assign(this.__state__, collection)
                 }
+            } else {
+
+                this.db[__name__] = Object.assign(this.db[__name__], { data: collection })
+                
+                if (!internal) {
+                    process.emit(__name__, collection)
+                    process.emit('action', 'upd', {
+                        __name__,
+                        collection,
+                    })
+                }
+                // returns the new object
+                return await collection
             }
-            this.db[__name__] = Object.assign(this.db[__name__], { data: collection })
-            
-            if (!internal) {
-                process.emit(__name__, collection)
-                process.emit('action', 'upd', {
-                    __name__,
-                    collection,
-                })
-            }
-            // returns the new object
-            return await collection
         }
 
         return new Promise((resolve, reject) => {
@@ -621,7 +627,6 @@ function inspect(db_path, obj, action) {
                     if ( notUndefined(obj[path[0]]) ) {
                         delete obj[db_path[0]]
                     } else {
-                        console.log('hello')
                         delete obj
                     }
                     break;
