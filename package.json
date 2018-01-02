@@ -1,6 +1,6 @@
 {
   "name": "@andre_garvin/localdb",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "small, simple, and light weight file database software",
   "main": "index.js",
   "scripts": {
@@ -9,12 +9,17 @@
   },
   "keywords": [
     "local",
+    "objects",
     "database",
-    "filesystem"
+    "filesystem",
+    "level",
+    "leveldown",
+    "levelup"
   ],
   "author": "Andre Garvin",
   "license": "MIT",
   "dependencies": {
+    "@andre_garvin/diff": "^0.1.1",
     "rimraf": "^2.6.2",
     "uuid": "^3.1.0",
     "watch-fs": "0.0.7"
@@ -22,5 +27,13 @@
   "devDependencies": {
     "ava": "^0.24.0",
     "request": "^2.83.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andreGarvin/localdb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andreGarvin/localdb/issues"
+  },
+  "homepage": "https://github.com/andreGarvin/localdb#readme"
 }

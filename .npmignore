@@ -1,7 +1,11 @@
+.circleci
+
 __tests__
 
 .gitignore
 
-test@localdb
+lib/server
 
 pg
+test@localdb
+.logs
