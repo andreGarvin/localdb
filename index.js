@@ -585,6 +585,11 @@ function inspect(db_path, obj, action) {
 
         // checks if the path on the object being inspected exists on the object
         if (!notUndefined(obj[db_path[0]])) {
+            if ((db_path.length !== 0 || db_path.length !== 1) && action.type === 'upd') {
+                obj[db_path[0]] = {}
+                return inspect(db_path.slice(1), obj[db_path[0]], action)
+            }
+            
             return {
                 ErrorMessage: new Error(`Path to property<'${db_path[0]}'> or Object<'${db_path[0]}'> does not exist on Object.`)
             }
@@ -637,6 +642,8 @@ function inspect(db_path, obj, action) {
                         } else {
                             obj[db_path[0]] = payload
                         }
+                    } else {
+                        obj[db_path[0]] = payload
                     }
                     break;
             }
