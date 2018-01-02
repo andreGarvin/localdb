@@ -59,12 +59,24 @@ test('getCollection()', async t => {
 })
 
 test('on()', async t => {
-    db.on('new_york', payload => {
+    db.on('new_york', (type, payload) => {
         return t.not(payload, undefined)
     })
 
     await db.updateProp('/new_york/something/else/be/new', {
         payload: true
+    })
+})
+
+test('on().dbPath', async t => {
+    db.on('/new_york/something/else-if', async (type, payload) => {
+        if (payload.dbPath === '/new_york/something/else-if') {
+            return t.deepEqual(await db.fetchProp('/new_york/something/else-if'), payload.payload)
+        }
+    })
+
+    await db.updateProp('/new_york/something/else-if', {
+        payload: 'NOOOOOO!'
     })
 })
 
@@ -85,10 +97,25 @@ test('fetchProp()', async t => {
 
 test('updateProp()', async t => {
     await db.updateProp('/new_york/best_brough', {
-        payload: ['still_brooklyn_nigga', 'always will be']
+        payload: ['still_brooklyn', 'always will be']
     })
+
     const collection_prop_value = await db.fetchProp('/new_york/best_brough')
-    return t.is(collection_prop_value.length, 2)
+    return t.is(collection_prop_value.length, 3)
+})
+
+test('updateProp().newProp', async t => {
+    await db.updateProp('/new_york/newProp/that/is/awesome', {
+        payload: null
+    })
+
+    return t.deepEqual(await db.fetchProp('/new_york/newProp'), {
+        that: {
+            is: {
+                awesome: null
+            }
+        }
+    })
 })
 
 test('deleteProp()', async t => {

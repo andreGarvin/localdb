@@ -1,11 +1,13 @@
 # localdb: simple, light weight, file database creation
 
-## localdb solves the problem of creating a small but powerful file database on the local Machine with node enabling people to create amazing with node.
+## localdb solves the problem of creating a small but powerful file database on the local Machine enabling people to create amazing with things with node.
 
 ### If you may know there is a module called level which does the same thing as localdb , I love using level for other projects and I think its amazing module but there are are three disadvantages of using level.
 * One, level does not allow multiple connections from more then one instance being made across all running node processes. However, with localdb when multiple instances are creates a master slave relationship is formed between these instances on multiple running instances.
 * Two, level which is dependent on another module called leveldown, has a node binary built for `NODE_MODULE_VERSION` 54 which is not great if you want to create desktop applications with electron because you would need to switch to a older and maybe un resourceful version of node to match that `NODE_MODULE_VERSION`; possibly not being able to write the latest of JavaScript.
 * level is not really pushing the limits of things you can do which is pretty cool in creating distributed systems or applications. Unlike localdb it comes with with some pretty great stuff and Looking for contributors to create much more.
+
+# This is not really re-eventing the wheel really, it creating a swish army knife file database with lots bells and whistle; But every easy to use and well documented APIs.
 
 # How To use localdb
 
@@ -30,6 +32,19 @@ db.create({
     __name__: 'hello_world',
     data_object: {
         dummy_data: true,
+        list: {
+            strings: [ 'cat', 'water' ],
+            objs: [
+                {
+                    _id: 1234,
+                    text: 'This is a message'
+                },
+                {
+                    _id: 5678,
+                    text: 'This is another message'
+                }
+            ]
+        },
         other: {
             stuff: {
                 that: 'might',
@@ -64,10 +79,36 @@ db.fetchProp('/hello_world/other/stuff/be/useful').then(prop => {
 ```
 
 ```js
+// fetching a certain item in a array
+db.fetchProp('/hello_world/list/strings/cat').then(c => console.log(c)).catch(err => console.error(err))
+
+// maybe certain items witha perticular property name returning as a array
+// ex: c = [ { _id: 1234, text: 'this is a message' }, ... ]
+db.fetchProp('/hello_world/list/objs/_id').then(c => console.log(c)).catch(err => console.error(err))
+
+// of maybe just one that matches that
+db.fetchProp('/hello_world/list/objs/text/cat').then(c => console.log(c)).catch(err => console.error(err))
+```
+
+```js
 // same for updating a ceratin property on the JSON object instead of the whole thing and retruns the new colleciton from localdb
 db.updateProp('/hello_world/dummy_data/newProp', {
     payload: [ 'this', 'is', 'new' ]
 }).then(prop => console.log(prop)).catch(err => console.error(err))
+```
+
+```js
+// updating list
+
+// every item in the list
+db.updateProp('/hello_world/list/objs/_id/:time', {
+    payload: Date()
+}).then(c => console.log(c)).catch(err => console.log(err))
+
+// update certain item on the list witha unique identifier
+db.updateProp('/hello_world/list/objs/_id/1234/:report', {
+    payload: true
+}).then(c => console.log(c)).catch(err => console.log(err))
 ```
 
 ```js
@@ -113,7 +154,6 @@ db.setStat(new_state, {
 })
 ```
 
-
 ## Adding middleware to localdb
 ```js
 function logger(db, type, _collection) {
@@ -155,7 +195,17 @@ db.create({
 ## Listen on db events such as crt, udp, del on certain collections in the localdb process cycle
 ```js
 // this will emit the new collection before the updateProp gets it.
-db.on('hello-world', payload => console.log(payload))
+/*
+    The `payload` object will return these key values.
+    paload = {
+        dbPath: '',
+        __name__: '',
+        payload: '',
+        type: ''
+    }
+*/
+db.on('hello-world', (type, payload) => console.log(payload))
+
 
 db.udpateProp('/hello-world/newProp', {
     payload: 'new stuff'
@@ -165,7 +215,7 @@ db.udpateProp('/hello-world/newProp', {
     .catch(err => console.error(err))
 ```
 
-## Want to server you data on a server ?
+## Want to serve your data on a TCP-server ?
 ```js
 const db = new localdb({
     // this is connecting to same file not recreating a new file
