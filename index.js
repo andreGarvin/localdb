@@ -6,13 +6,12 @@ const {
 } = require('fs')
 const path = require('path')
 
+const diff = require('@andre_garvin/diff')
 const rimraf = require('rimraf')
 const uuid = require('uuid')
 
 const { CompressToGzip, unCompressGzip } = require('./lib/compressor')
-const notUndefined = require('./lib/notUndefined')
-const diff = require('./lib/diff')
-
+const inspectObject = require('./lib/inspectObject')
 /**
  * This is the data that was inside of the desired collection list of the
  * database. The collectio is what ever you put in the data base.
@@ -39,6 +38,7 @@ const diff = require('./lib/diff')
  * @typedef QueryObject
  */
 
+const notUndefined = (e) => e !== undefined 
 
 /**
  * @classdesc This is the local database manger on the local machine
@@ -76,7 +76,7 @@ class localdb {
             
             // creates the folder
             mkdirSync(this.db_path)
-            
+
             // creates the file path to the db file
             const db_file_path = path.resolve(this.db_path, `${Math.random().toString(16).slice(2)}.db`)
             CompressToGzip(db_file_path, this.db)
@@ -103,30 +103,32 @@ class localdb {
         }
 
         process.on('beforeExit', () => {
-            
             if (this.compressed_file_path !== 'dropped') {
                 this.close()
             }
         })
 
-        async function resolvePromise(promiseObj, type, payload) {
-            const resp = await promiseObj
+        /**
+         * This handles middle ware used for localdb
+         */
+        process.on('action', (type, payload) => {
 
-            if (resp !== undefined) {
-                const { __name__, db_path, data_object } = await resp
-                if (db_path !== undefined) {
-                    await this.updateProp(db_path, {
-                        payload: data_object
-                    }, 'internal')
-                } else {
-                    this.db[__name__] = Object.assign(this.db[__name__], {
-                        data: data_object
-                    })
+            async function resolvePromise(promiseObj, type, payload) {
+                const resp = await promiseObj
+
+                if (resp !== undefined) {
+                    const { __name__, db_path, data_object } = await resp
+                    if (db_path !== undefined) {
+                        await this.updateProp(db_path, {
+                            payload: data_object
+                        }, 'internal')
+                    } else {
+                        this.db[__name__] = Object.assign(this.db[__name__], {
+                            data: data_object
+                        })
+                    }
                 }
             }
-        }
-
-        process.on('action', (type, payload) => {
 
             this.extensions.forEach(i => {
                 const Func = i.call(this, this, type, payload)
@@ -139,9 +141,23 @@ class localdb {
         })
     }
 
-    on(__name__, cb) {
-        process.on(__name__, payload => {
-            return cb(payload)
+    on(collection_name, cb) {
+
+        process.on('dbChange', payload => {
+            const { __name__, type, dbPath = '' } = payload;
+
+            if (collection_name === __name__ ) {
+                return cb(type, payload)
+            }
+
+            const matchesDBPath = (
+                collection_name == dbPath ||
+                collection_name === dbPath.slice(0, collection_name.trim().length) ||
+                dbPath === collection_name.slice(0, dbPath.trim().length)
+            )
+            if (collection_name !== undefined && matchesDBPath) {
+                return cb(type, payload)
+            }
         })
     }
 
@@ -215,13 +231,14 @@ class localdb {
 
         async function writeTo_db(db) {
             const saved_db_stream = JSON.parse(await unCompressGzip(this.compressed_file_path))
-            
+                
             this.__state__.dbs = Object.keys(this.db).filter(i => i !== '__state__')
             this.db = Object.assign(this.db, { __state__: this.__state__ })
             
             const decouple_obj_ref = JSON.parse(JSON.stringify(saved_db_stream))
             const new_db_stream = Object.assign(decouple_obj_ref, this.db)
 
+            console.log(diff(saved_db_stream, new_db_stream))
             if (diff(saved_db_stream, new_db_stream)) {
                 await CompressToGzip(this.compressed_file_path, JSON.stringify(new_db_stream))
             }
@@ -271,6 +288,14 @@ class localdb {
                         collection: data_object
                     })
                 }
+
+                process.emit('dbChange', {
+                    dbPath: undefined,
+                    __name__,
+                    type: 'crt',
+                    payload: data_object
+                })
+                
                 return resolve(data_object)
             }
         })
@@ -305,37 +330,45 @@ class localdb {
      */
     deleteProp(db_path) {
 
+        async function _deleteProp(__name__, db_path) {
+            const collection = await this.getCollection(__name__)
+            // clean the database path to reflect the object/coolection in the localdb
+            /*
+                /bar/this/is/dumb
+                    bar === __name__
+                    /this/is/dumb === 'collection_path'
+            */
+            
+            const collection_frag = inspectObject(db_path, collection, {
+                type: 'del'
+            })
+
+            if (collection_frag !== undefined) {
+                return await collection_frag.ErrorMessage
+            }
+
+            process.emit('dbChange', {
+                dbPath: db_path,
+                __name__,
+                type: 'del',
+                paylaod: undefined
+            })
+
+            // this converts it back to a db_path that was given
+            return await this.updateProp(`/${__name__}`, {
+                payload: collection
+            })
+        }
+
         return new Promise((resolve, reject) => {
             if (db_path === undefined || db_path.trim().length === 0) {
                 return reject(new Error('Path was undefined or was not given.') )
             }
 
             const __name__ = db_path.split('/')[1]
-            return this.getCollection(__name__)
-                .then(collection => {
-
-                    // clean the database path to reflect the object/coolection in the localdb
-                    /*
-                        /bar/this/is/dumb
-                            bar === __name__
-                            /this/is/dumb === 'collection_path'
-                    */
-                    db_path = `/${db_path.split('/').slice(2).join('/')}`
-                    const collection_frag = inspect(db_path, collection, {
-                        type: 'del'
-                    })
-                    
-                    if (collection_frag !== undefined) {
-                        return reject(collection_frag.ErrorMessage)
-                    }
-                    
-                    // this converts it back to a db_path that was given
-                    return this.updateProp(`/${__name__}`, {
-                        payload: collection
-                    })
-                        .then(() => resolve(undefined))
-                        .catch(err => reject(err))
-                })
+            db_path = `/${db_path.split('/').slice(2).join('/')}`
+            return _deleteProp.call(this, __name__, db_path)
+                .then(() => resolve(undefined))
                 .catch(err => reject(err))
         })
     }
@@ -346,7 +379,6 @@ class localdb {
     */
     drop() {
         this.compressed_file_path = 'dropped';
-        // console.log(`Dropped ${path.basename(this.compressed_file_path).split('.gz').join('')}`)
         return rimraf.sync(this.db_path)
     }
 
@@ -385,7 +417,7 @@ class localdb {
 
                     if (collection !== undefined) {
                         db_path = `/${db_path.split('/').slice(2).join('/')}`
-                        const collection_frag = inspect(db_path, collection, {
+                        const collection_frag = inspectObject(db_path, collection, {
                             type: 'fetch'
                         })
 
@@ -399,7 +431,7 @@ class localdb {
                 return this.getCollection(__name__)
                     .then(collection => {
                         db_path = `/${db_path.split('/').slice(2).join('/')}`
-                        const collection_frag = inspect(db_path, collection, {
+                        const collection_frag = inspectObject(db_path, collection, {
                             type: 'fetch'
                         })
 
@@ -503,7 +535,7 @@ class localdb {
             if (db_path === '/') {
                 collection = action.payload
             } else {
-                inspect(db_path, collection, action)
+                inspectObject(db_path, collection, action)
             }
 
             if (__name__ === '__state__') {
@@ -515,7 +547,12 @@ class localdb {
                 this.db[__name__] = Object.assign(this.db[__name__], { data: collection })
                 
                 if (!internal) {
-                    process.emit(__name__, collection)
+                    process.emit('dbChange', {
+                        dbPath: `/${__name__}${db_path}`,
+                        __name__,
+                        type: 'udp',
+                        payload: action.payload
+                    })
                     
                     process.emit('action', 'upd', {
                         __name__,
@@ -548,113 +585,3 @@ class localdb {
 }
 
 module.exports = localdb
-
-/**
- * This fetchs, deletes, updates, adn inserts data to a object passed in
- * @param {(string|array)} path The path to go through of the object 
- * @param {Object} obj the object you want to inspect
- * @param {Object} action the 
- */
-function inspect(db_path, obj, action) {
-    if (!db_path) {
-        return {
-            ErrorMessage: new Error('No path was given.')
-        }
-    }
-    
-    // turns the path splited into array
-    if (!Array.isArray(db_path)) {
-        db_path = db_path.split('/').slice(1).filter(i => i !== '')
-    }
-    if (db_path.length === 0) {
-        if (action.type === 'fetch') {
-            return obj
-        }
-        return {
-            ErrorMessage: new Error('No path was given.')
-        }
-    }
-    if (obj === undefined || Object.keys(obj).length === 0) {
-        return {
-            ErrorMessage: new Error('No object was passed to inspect.')
-        }
-    }
-
-    // checks if there is a first item and there is more paths to go to
-    if (db_path[0] !== undefined && db_path.length !== 1) {
-
-        // checks if the path on the object being inspected exists on the object
-        if (!notUndefined(obj[db_path[0]])) {
-            if ((db_path.length !== 0 || db_path.length !== 1) && action.type === 'upd') {
-                obj[db_path[0]] = {}
-                return inspect(db_path.slice(1), obj[db_path[0]], action)
-            }
-            
-            return {
-                ErrorMessage: new Error(`Path to property<'${db_path[0]}'> or Object<'${db_path[0]}'> does not exist on Object.`)
-            }
-        }
-
-        // in cases of adding a prop that does not exist on the JSON object
-        // this creates object and assigns it to the JSON object and replace exist prop value/s
-        // in caese of deleting prop but not the parent root
-        if (db_path.length === 2 && !Object.keys(obj).includes(db_path[1])) {
-            if (action.type === 'upd') {
-                const new_obj = {}
-                new_obj[db_path[1]] = action.payload
-                obj[db_path[0]] = new_obj
-                return;
-            } else if (action.type === 'del') {
-                delete obj[db_path[0]][db_path[1]]
-
-                if (Object.keys(obj[db_path[0]]).length === 0) {
-                    delete obj[db_path[0]]
-                }
-                return
-            }
-        }
-
-        // slices the path to the next path and pass the object being inspected
-        return inspect(db_path.slice(1), obj[db_path[0]], action)
-    } else {
-
-        // If there is not more paths then return the object
-        if (!db_path[0] && action.type === 'fetch') {
-            return obj[db_path[0]]
-        }
-
-        // if the action was given
-        if (action !== undefined) {
-
-            const { type, payload } = action
-            switch (type) {
-                case 'del':
-                    if ( notUndefined(obj[path[0]]) ) {
-                        delete obj[db_path[0]]
-                    } else {
-                        delete obj
-                    }
-                    break;
-                case 'upd':
-                    if ( notUndefined(obj[db_path[0]]) ) {
-                        if (typeof obj[db_path[0]] === 'object' && typeof payload === 'object') {
-                            obj[db_path[0]] = Object.assign(obj[db_path[0]], payload)
-                        } else {
-                            obj[db_path[0]] = payload
-                        }
-                    } else {
-                        obj[db_path[0]] = payload
-                    }
-                    break;
-            }
-
-            return type === 'fetch' ? obj[db_path[0]] : payload
-        }
-
-        if (!obj[path[0]]) {
-            return {
-                ErrorMessage: new Error(`db_path to property<'${db_path[0]}'> or Object<'${db_path[0]}'> does not exist on Object.`)
-            }
-        }
-    }
-}

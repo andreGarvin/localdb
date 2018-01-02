@@ -1,5 +1,7 @@
 node_modules
 
-test@localdb
+./lib/server
 
 pg
+test@localdb
+.logs
