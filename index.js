@@ -27,7 +27,8 @@ const inspectObject = require('./lib/inspectObject')
 /**
  * This a like a QueryObject but give the type of action ypu want to perform and a paylaod
  * @property {string} type Its can be a 'add', 'del', 'update', 'fetch'
- * @property {payload}
+ * @property {string} data This is the data you wanty to insert of update.
+ * @typedef payload
  */
 
 /**
@@ -51,7 +52,10 @@ class localdb {
         // the database conf object based to create the leveldb database folder
         this.dbconf = dbconf;
 
+        // this the database object being inside the gz file
         this.db = {};
+
+        // this the middleware and you want to inject between functions
         this.extensions = [];
         this.__state__ = {
             dbs: [],
@@ -118,6 +122,7 @@ class localdb {
 
                 if (resp !== undefined) {
                     const { __name__, db_path, data_object } = await resp
+
                     if (db_path !== undefined) {
                         await this.updateProp(db_path, {
                             payload: data_object
@@ -163,8 +168,8 @@ class localdb {
 
     /**
      * This updates the databases state internally after each query is made
-     * @param {*} state the current state
-     * @param {*} action the action that is being effected by the state
+     * @param {Object} state the current state
+     * @param {Object} action the action that is being effected by the state
      * @return {void}
      */
     setState(state, action) {
@@ -242,20 +247,20 @@ class localdb {
             if (diff(saved_db_stream, new_db_stream)) {
                 await CompressToGzip(this.compressed_file_path, JSON.stringify(new_db_stream))
             }
-            return process.exit()
+            return process.exit(0)
         }
 
         return writeTo_db.call(this, this.db)
             .catch(err => {
-                console.log(err)
-                return process.exit()
+                console.error(err)
+                return process.exit(1)
             })
     }
 
     /**
      * Creates a collections in leveldb with a gievn input, returns
      * that collection or a error if a error occurs.
-     * @param {QueryObject} QueryObject 
+     * @param {QueryObject} QueryObject This is defined in the typedef for QueryObject
      * @return {(Promise.collection|Promise.string)}
      */
     create(QueryObject) {
@@ -301,6 +306,11 @@ class localdb {
         })
     }
 
+    /**
+     * This creates a TCP server to connect to and send data to when ever there is a update,
+     * deletion, or create.
+     * @return {(Promise.void|Promise.Error)}
+     */
     startServer() {
         if (notUndefined(this.dbconf.SERVER)) {
             if (notUndefined(this.db) || Object.keys(this.db) !== 0) {
@@ -318,15 +328,15 @@ class localdb {
                     return require('./lib/server')(this.dbconf.SERVER, this.db, compressed_file_path)
                 })
                 .catch(err => Promise.reject(err))
-        } else {
-            return Promise.reject(new Error('SERVER feild was given but is empty.'))    
         }
+
+        return Promise.reject(new Error('SERVER feild was given but is empty.'))
     }
 
     /**
      * This deletes collections or collection properties from the database.
      * @param {QueryObject } QueryObject defined in the typedef for
-     * @return {Promise.collection }
+     * @return {(Promise.collection|Promise.Error)}
      */
     deleteProp(db_path) {
 
@@ -351,7 +361,7 @@ class localdb {
                 dbPath: db_path,
                 __name__,
                 type: 'del',
-                paylaod: undefined
+                payload: undefined
             })
 
             // this converts it back to a db_path that was given
@@ -374,7 +384,7 @@ class localdb {
     }
 
     /**
-    * This deletes the database folder
+    * This deletes the database folder.
     * @return {void}
     */
     drop() {
@@ -382,7 +392,8 @@ class localdb {
         return rimraf.sync(this.db_path)
     }
 
-    /* This is a method that that always to inject middleware of code that runs
+    /**
+     * This is a method that that always to inject middleware of code that runs
      * on actions beng made on locladb
      * The actions such as create, delete, insert/update will call the excutebale code
      * @param {(Promise|function)} func this is a the executable function
@@ -394,7 +405,7 @@ class localdb {
 
     /**
      * This returns that data speficed in the collection
-     * @param {string} _path the path of the props on the collection
+     * @param {string} db_path the path of the props on the collection
      * @param {Object} action Its is decibed in the typedef of {action}
      * @return {(Promise.collection|Promise.string)}
      */
@@ -407,40 +418,40 @@ class localdb {
 
             const __name__ = db_path.split('/')[1]
 
-            if (__name__ !== '__state__') {
-                if (Object.keys(this.db).length !== 0) {
-                    if ( !Object.keys(this.db).includes(__name__) ) {
-                        return reject(new Error(`localdb could not find collection name ['${__name__}'].`))
+                if (__name__ !== '__state__') {
+                    if (Object.keys(this.db).length !== 0) {
+                        if ( !Object.keys(this.db).includes(__name__) ) {
+                            return reject(new Error(`localdb could not find collection name ['${__name__}'].`))
+                        }
+
+                        const collection = this.db[__name__].data
+
+                        if (collection !== undefined) {
+                            db_path = `/${db_path.split('/').slice(2).join('/')}`
+                            const collection_frag = inspectObject(db_path, collection, {
+                                type: 'fetch'
+                            })
+
+                            if (Object.keys(collection_frag).includes('ErrorMessage')) {
+                                return reject(collection_frag.ErrorMessage)
+                            }
+                            return resolve(collection_frag)
+                        }
                     }
 
-                    const collection = this.db[__name__].data
+                    return this.getCollection(__name__)
+                        .then(collection => {
+                            db_path = `/${db_path.split('/').slice(2).join('/')}`
+                            const collection_frag = inspectObject(db_path, collection, {
+                                type: 'fetch'
+                            })
 
-                    if (collection !== undefined) {
-                        db_path = `/${db_path.split('/').slice(2).join('/')}`
-                        const collection_frag = inspectObject(db_path, collection, {
-                            type: 'fetch'
+                            if (Object.keys(collection_frag).includes('ErrorMessage')) {
+                                return reject(collection_frag.ErrorMessage)
+                            }
+                            return resolve(collection_frag)
                         })
-
-                        if (Object.keys(collection_frag).includes('ErrorMessage')) {
-                            return reject(collection_frag.ErrorMessage)
-                        }
-                        return resolve(collection_frag)
-                    }
-                }
-
-                return this.getCollection(__name__)
-                    .then(collection => {
-                        db_path = `/${db_path.split('/').slice(2).join('/')}`
-                        const collection_frag = inspectObject(db_path, collection, {
-                            type: 'fetch'
-                        })
-
-                        if (Object.keys(collection_frag).includes('ErrorMessage')) {
-                            return reject(collection_frag.ErrorMessage)
-                        }
-                        return resolve(collection_frag)
-                    })
-                    .catch(err => reject(err))
+                        .catch(err => reject(err))
                 }
             })
     }
@@ -448,7 +459,7 @@ class localdb {
     /**
      * Retruns a collection from the sepified collection name or a error.
      * @param {string} __name__ name of the collection
-     * @return {(Promise.collection}
+     * @return {(Promise.collection|Promise.Error)}
      */
     getCollection(__name__) {
         
@@ -490,7 +501,7 @@ class localdb {
      * Destorys colletion or collections inside of leveldb given a collection name.
      * However state will not be deleted it will throw a reject if state is being deleted.
      * @param {string} __name__ name of the collection
-     * @return {Promise.void}
+     * @return {(Promise.void|Promise.Error)}
      */
     teardown(__name__) {
         
@@ -520,6 +531,12 @@ class localdb {
         })
     }
 
+    /**
+     * This udpates the desired path in the collection stored in localdb.
+     * @param {string} db_path This is the path of the data you want to change
+     * @param {Object} payload this holds the data you want to change
+     * @return {(Promise.collection|Promise.Error)}
+     */
     updateProp(db_path, payload) {
         const internal = Array.from(arguments).slice(-1)[0] === 'internal'
 
@@ -527,12 +544,13 @@ class localdb {
             // extracts the name from the db_path
             const __name__ = db_path.split('/')[1]
 
-            // cleans the db the data again
+            // cleans the db path go to the path in the collection
             db_path = `/${db_path.split('/').slice(2).join('/')}`
             let collection = __name__ === '__state__' ? await this.fetchState() : await this.getCollection(__name__)
 
             // updates the object
             if (db_path === '/') {
+                // if db_path is a '/' then that means that they are chaning the whole collection
                 collection = action.payload
             } else {
                 inspectObject(db_path, collection, action)
